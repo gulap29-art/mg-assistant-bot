@@ -84,7 +84,7 @@ app.post("/mg-chat", async (req, res) => {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "gpt-4.1-mini",
+        model: "gpt-4o-mini",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userMessage }
@@ -99,9 +99,21 @@ app.post("/mg-chat", async (req, res) => {
     }
 
     const data = await apiRes.json();
-    const reply = data.choices?.[0]?.message?.content ?? "";
 
-    res.json({ reply });
+let reply = "";
+const choice = data.choices?.[0]?.message;
+
+// Bazı modeller content'i dizi olarak dönebiliyor
+if (Array.isArray(choice?.content)) {
+  reply = choice.content
+    .map(part => typeof part === "string" ? part : part.text || "")
+    .join("");
+} else {
+  reply = choice?.content ?? "";
+}
+
+res.json({ reply });
+
 
   } catch (err) {
     console.error("Server error:", err);
@@ -292,9 +304,17 @@ app.get("/ui", (req, res) => {
             body: JSON.stringify({ message: text })
           });
 
-          const data = await res.json();
-          messagesEl.removeChild(loadingRow);
-          appendMessage(data.reply || "Boş yanıt döndü.", "bot");
+const data = await res.json();
+messagesEl.removeChild(loadingRow);
+
+if (data.reply) {
+  appendMessage(data.reply, "bot");
+} else if (data.error) {
+  appendMessage("Hata: " + (data.detail || data.error), "bot");
+} else {
+  appendMessage("Boş yanıt döndü.", "bot");
+}
+
         } catch (err) {
           console.error(err);
           messagesEl.removeChild(loadingRow);

@@ -11,6 +11,8 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
+console.log("OPENAI_API_KEY durum:", OPENAI_API_KEY ? "SET" : "MISSING");
+
 
 // MUSTAFA GÜLAP PERSONA PROMPT
 const systemPrompt = `
@@ -84,7 +86,7 @@ app.post("/mg-chat", async (req, res) => {
         "Content-Type": "application/json"
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini",
+        model: "gpt-4o-mini-high",
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userMessage }

@@ -11,70 +11,41 @@ app.use(express.json());
 
 const PORT = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
-console.log("OPENAI_API_KEY durum:", OPENAI_API_KEY ? "SET" : "MISSING");
 
-
-// MUSTAFA GÜLAP PERSONA PROMPT
+// MUSTAFA GÜLAP – KISA & NET PERSONA
 const systemPrompt = `
-You are “Mustafa Gülap AI Assistant”, a professional chatbot that answers questions exactly as Mustafa Gülap would answer.
-
-Use the following identity, experience, tone, domain expertise and personal background:
+You are “Mustafa Gülap AI Assistant”, a chatbot that answers exactly as Mustafa Gülap would—short, concise, technical.
 
 IDENTITY
 - Name: Mustafa Gülap
-- Mechanical Engineer (Boğaziçi University)
-- MSc in Engineering & Technology Management (Boğaziçi University)
+- Mechanical Engineer, Boğaziçi University
+- MSc Engineering & Technology Management, Boğaziçi University
 - Based in Türkiye
 
 CURRENT ROLE
-Since 2024: Working with Özka Üretim & Makine on project-based manufacturing, supply chain, fabrication, welding, inspection consultancy and heavy industrial projects.
+- Özka Üretim & Makine — project-based manufacturing, supply chain, fabrication, welding, inspection consultancy.
 
-CORE BACKGROUND
-- 12+ years at Tüpraş (İzmit Refinery & HQ)
-   • Inspection Chief Engineer (2012–2017)
-   • Maintenance Chief Engineer (2017–2018)
-   • Static Equipment Contract & Procurement Executive (2018–2022)
-   • Agile Coach (2020–2022)
+EXPERIENCE SUMMARY
+- 12+ years at Tüpraş (Inspection, Maintenance, Procurement, Agile Coach)
+- Supply Chain Manager @ Sistem Teknik (Industrial Furnaces)
+- Expertise: static equipment, pressure vessels, NDT (UT/VT/RT Level II), API 510, corrosion, fired heaters, fabrication, refinery equipment, procurement, logistics, project mgmt.
 
-- Supply Chain Manager @ Sistem Teknik Industrial Furnaces (2022–2024)
-
-SPECIALIZED EXPERTISE
-- Static Equipment (Pressure vessels, columns, reactors, heat exchangers, furnaces)
-- NDT & Inspection (UT/VT/RT Level II acc. ISO 9712)
-- API 510 Pressure Vessel Inspector
-- Asset Integrity & RBI
-- Corrosion & Material Engineering (Shell certified)
-- Fired Heaters (UOP Certified)
-- Contract Management, Procurement, Category Strategy
-- Vendor management, supply chain strategy, logistics
-- Heavy industrial fabrication, refinery equipment, steel manufacturing
-- Project management (turnarounds, large-scale manufacturing)
-- Agile, Scrum, Kanban practices in engineering environments
-
-VALUES & TONE
-- Professional, concise, confident
-- Transparent and realistic
-- Solution-oriented and calm
-- Speaks with high technical accuracy
-- Never exaggerates or speculates without basis
-
-HOW TO ANSWER
-- Answer as if you are Mustafa directly (“I”, “my experience”, “in my previous role”)
-- Provide clear, structured, technical responses when needed
-- Adapt style depending on the user: If technical → deeply technical, If general → high-level summary
-- If asked about personal background → use Mustafa’s real CV information
-- If asked about Özka → explain ongoing project-based manufacturing and engineering support
-- Always maintain a corporate, executive tone suitable for LinkedIn-level communication
+ANSWERING STYLE — IMPORTANT
+- Always answer **as Mustafa** ("Ben", "benim geçmişim", "önceki görevlerimde…")
+- **Cevaplar kısa olacak (2–4 cümle).**
+- Gereksiz detay, hikâye, uzun açıklama yok.
+- Teknik sorularda kısa özet ver; kullanıcı isterse detaylandır.
+- Sadece “detaylı anlat” gibi bir talep gelirse uzun cevap ver.
+- Kurumsal, net, doğrudan LinkedIn seviyesinde konuş.
 
 GOAL
-Give the most accurate answer that represents Mustafa’s real experience, expertise and professional identity.
+- Short, accurate, experience-based answers with high technical precision.
 `;
 
 // API endpoint
 app.post("/mg-chat", async (req, res) => {
   try {
     const userMessage = req.body?.message;
-
     if (!userMessage) {
       return res.status(400).json({ error: "message field is required" });
     }
@@ -87,6 +58,8 @@ app.post("/mg-chat", async (req, res) => {
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
+        max_tokens: 150,
+        temperature: 0.4,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userMessage }
@@ -101,21 +74,9 @@ app.post("/mg-chat", async (req, res) => {
     }
 
     const data = await apiRes.json();
+    const reply = data.choices?.[0]?.message?.content ?? "Boş cevap döndü.";
 
-let reply = "";
-const choice = data.choices?.[0]?.message;
-
-// Bazı modeller content'i dizi olarak dönebiliyor
-if (Array.isArray(choice?.content)) {
-  reply = choice.content
-    .map(part => typeof part === "string" ? part : part.text || "")
-    .join("");
-} else {
-  reply = choice?.content ?? "";
-}
-
-res.json({ reply });
-
+    res.json({ reply });
 
   } catch (err) {
     console.error("Server error:", err);
@@ -123,7 +84,7 @@ res.json({ reply });
   }
 });
 
-// WhatsApp tarzı UI (GET /ui)
+// WhatsApp tarzı UI
 app.get("/ui", (req, res) => {
   const html = `
   <!DOCTYPE html>
@@ -135,7 +96,7 @@ app.get("/ui", (req, res) => {
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
       body {
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+        font-family: system-ui, sans-serif;
         background: #ece5dd;
         display: flex;
         align-items: center;
@@ -158,29 +119,16 @@ app.get("/ui", (req, res) => {
         background: #075e54;
         color: #fff;
         padding: 12px 16px;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
       }
-      .chat-header-title {
-        font-size: 16px;
-        font-weight: 600;
-      }
-      .chat-header-sub {
-        font-size: 12px;
-        opacity: 0.85;
-        margin-top: 2px;
-      }
+      .chat-header-title { font-size: 16px; font-weight: 600; }
+      .chat-header-sub { font-size: 12px; opacity: 0.85; margin-top: 2px; }
       .chat-messages {
         flex: 1;
         background: #ece5dd;
         padding: 10px 8px;
         overflow-y: auto;
       }
-      .bubble-row {
-        display: flex;
-        margin-bottom: 8px;
-      }
+      .bubble-row { display: flex; margin-bottom: 8px; }
       .bubble {
         max-width: 80%;
         padding: 8px 10px;
@@ -189,21 +137,10 @@ app.get("/ui", (req, res) => {
         line-height: 1.4;
         position: relative;
       }
-      .bubble-user {
-        margin-left: auto;
-        background: #dcf8c6;
-        border-top-right-radius: 0;
-      }
-      .bubble-bot {
-        margin-right: auto;
-        background: #ffffff;
-        border-top-left-radius: 0;
-      }
+      .bubble-user { margin-left: auto; background: #dcf8c6; }
+      .bubble-bot { margin-right: auto; background: #ffffff; }
       .bubble-meta {
-        font-size: 10px;
-        opacity: 0.6;
-        margin-top: 3px;
-        text-align: right;
+        font-size: 10px; opacity: 0.6; margin-top: 3px; text-align: right;
       }
       .chat-input-area {
         padding: 8px;
@@ -213,33 +150,13 @@ app.get("/ui", (req, res) => {
         align-items: center;
       }
       .chat-input {
-        flex: 1;
-        border-radius: 20px;
-        border: none;
-        padding: 8px 12px;
-        font-size: 13px;
-        outline: none;
+        flex: 1; border-radius: 20px; border: none;
+        padding: 8px 12px; font-size: 13px; outline: none;
       }
       .chat-send-btn {
-        border-radius: 20px;
-        border: none;
-        background: #25d366;
-        color: #ffffff;
-        padding: 8px 14px;
-        font-size: 13px;
-        font-weight: 500;
-        cursor: pointer;
-      }
-      .chat-send-btn:disabled {
-        opacity: 0.6;
-        cursor: default;
-      }
-      .chat-footer {
-        font-size: 10px;
-        text-align: center;
-        padding: 4px 0 6px 0;
-        color: #777;
-        background: #f4f4f4;
+        border-radius: 20px; border: none;
+        background: #25d366; color: #ffffff;
+        padding: 8px 14px; font-size: 13px; cursor: pointer;
       }
     </style>
   </head>
@@ -247,15 +164,14 @@ app.get("/ui", (req, res) => {
     <div class="chat-wrapper">
       <div class="chat-header">
         <div class="chat-header-title">Mustafa Gülap AI Assistant</div>
-        <div class="chat-header-sub">Profesyonel geçmişim ve uzmanlık alanlarımla ilgili sorularınızı yanıtlar.</div>
+        <div class="chat-header-sub">Kısa, net ve profesyonel yanıtlar.</div>
       </div>
+
       <div id="messages" class="chat-messages"></div>
+
       <div class="chat-input-area">
         <input id="userInput" class="chat-input" type="text" placeholder="Mesajınızı yazın..." />
         <button id="sendBtn" class="chat-send-btn">Gönder</button>
-      </div>
-      <div class="chat-footer">
-        Yanıtlar, Mustafa Gülap'ın profesyonel CV'sine göre optimize edilmiştir.
       </div>
     </div>
 
@@ -270,8 +186,7 @@ app.get("/ui", (req, res) => {
 
         const bubble = document.createElement("div");
         bubble.classList.add("bubble");
-        if (sender === "user") bubble.classList.add("bubble-user");
-        else bubble.classList.add("bubble-bot");
+        bubble.classList.add(sender === "user" ? "bubble-user" : "bubble-bot");
 
         bubble.innerText = text;
 
@@ -293,11 +208,10 @@ app.get("/ui", (req, res) => {
 
         appendMessage(text, "user");
         inputEl.value = "";
-        inputEl.focus();
         sendBtn.disabled = true;
 
         appendMessage("Yazıyorum...", "bot");
-        const loadingRow = messagesEl.lastChild;
+        const loader = messagesEl.lastChild;
 
         try {
           const res = await fetch("/mg-chat", {
@@ -306,34 +220,22 @@ app.get("/ui", (req, res) => {
             body: JSON.stringify({ message: text })
           });
 
-const data = await res.json();
-messagesEl.removeChild(loadingRow);
-
-if (data.reply) {
-  appendMessage(data.reply, "bot");
-} else if (data.error) {
-  appendMessage("Hata: " + (data.detail || data.error), "bot");
-} else {
-  appendMessage("Boş yanıt döndü.", "bot");
-}
-
+          const data = await res.json();
+          messagesEl.removeChild(loader);
+          appendMessage(data.reply, "bot");
         } catch (err) {
-          console.error(err);
-          messagesEl.removeChild(loadingRow);
-          appendMessage("Bağlantı hatası, lütfen tekrar deneyin.", "bot");
-        } finally {
-          sendBtn.disabled = false;
+          messagesEl.removeChild(loader);
+          appendMessage("Bağlantı hatası.", "bot");
         }
+
+        sendBtn.disabled = false;
       }
 
       sendBtn.addEventListener("click", sendMessage);
-      inputEl.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") sendMessage();
-      });
+      inputEl.addEventListener("keydown", e => { if (e.key === "Enter") sendMessage(); });
 
-      // karşılama mesajı
       appendMessage(
-        "Merhaba, ben Mustafa Gülap'ın profesyonel AI asistanıyım. Statik ekipman, inspeksiyon, bakım, tedarik zinciri, sözleşme yönetimi veya Özka ile yürüttüğüm proje bazlı imalatlar hakkında sorular sorabilirsiniz.",
+        "Merhaba, ben Mustafa Gülap'ın profesyonel AI asistanıyım. Kısa ve net yanıtlar veriyorum.",
         "bot"
       );
     </script>
@@ -343,10 +245,7 @@ if (data.reply) {
   res.send(html);
 });
 
-// ana sayfa /'yi /ui'ye yönlendirelim
-app.get("/", (req, res) => {
-  res.redirect("/ui");
-});
+app.get("/", (req, res) => res.redirect("/ui"));
 
 app.listen(PORT, () => {
   console.log(`MG Assistant API listening on port ${PORT}`);

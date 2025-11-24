@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
 import fetch from "node-fetch";
+import fs from "fs";
 
 dotenv.config();
 
@@ -12,68 +13,26 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-// MUSTAFA GÜLAP – KISA & NET PERSONA
-import fs from "fs";
-const persona = fs.readFileSync("./persona.txt", "utf-8");
-
-let personaCache = {
-  text: "",
-  lastLoaded: 0,
-};
-
-async function getPersona() {
-  const now = Date.now();
-  const FIVE_MIN = 5 * 60 * 1000;
-
-  // Cache varsa ve 5 dakikadan yeni ise onu kullan
-  if (personaCache.text && now - personaCache.lastLoaded < FIVE_MIN) {
-    return personaCache.text;
-  }
-
-  const personaUrl = process.env.PERSONA_URL;
-  if (!personaUrl) {
-    console.warn("PERSONA_URL tanımlı değil, default kısa persona kullanılacak.");
-    return "Mustafa Gülap; project-based manufacturing & engineering partner.";
-  }
-
-  try {
-    const resp = await fetch(personaUrl);
-    const txt = await resp.text();
-    personaCache = { text: txt, lastLoaded: now };
-    return txt;
-  } catch (err) {
-    console.error("Persona yüklenirken hata:", err);
-    // Daha önce cache varsa onu kullan, yoksa fallback
-    return personaCache.text || "Mustafa Gülap; project-based manufacturing & engineering partner.";
-  }
+// PERSONA TXT'DEN YÜKLEME
+let personaText = "";
+try {
+  personaText = fs.readFileSync("./persona.txt", "utf-8");
+  console.log("Persona yüklendi.");
+} catch (err) {
+  console.error("persona.txt okunamadı, default persona kullanılacak:", err);
+  personaText = "Mustafa Gülap; proje bazlı imalat ve mühendislik hizmeti veren bir çözüm ortağıdır.";
 }
 
-You are “Mustafa Gülap AI Assistant”, a chatbot that answers exactly as Mustafa Gülap would—short, concise, technical.
+const systemPrompt = `
+You are "Mustafa Gülap AI Assistant".
 
-IDENTITY
-- Name: Mustafa Gülap
-- Mechanical Engineer, Boğaziçi University
-- MSc Engineering & Technology Management, Boğaziçi University
-- Based in Türkiye
+Use the following persona description as ground truth about
+who you are, how you speak and how you answer.
+Never contradict it, and answer always as if you are Mustafa
+("ben" diliyle, kısa, net, teknik, profesyonel).
 
-CURRENT ROLE
-- Özka Üretim & Makine — project-based manufacturing, supply chain, fabrication, welding, inspection consultancy.
-
-EXPERIENCE SUMMARY
-- 12+ years at Tüpraş (Inspection, Maintenance, Procurement, Agile Coach)
-- Supply Chain Manager @ Sistem Teknik (Industrial Furnaces)
-- Expertise: static equipment, pressure vessels, NDT (UT/VT/RT Level II), API 510, corrosion, fired heaters, fabrication, refinery equipment, procurement, logistics, project mgmt.
-
-ANSWERING STYLE — IMPORTANT
-- Always answer **as Mustafa** ("Ben", "benim geçmişim", "önceki görevlerimde…")
-- **Cevaplar kısa olacak (2–4 cümle).**
-- Gereksiz detay, hikâye, uzun açıklama yok.
-- Teknik sorularda kısa özet ver; kullanıcı isterse detaylandır.
-- Sadece “detaylı anlat” gibi bir talep gelirse uzun cevap ver.
-- Kurumsal, net, doğrudan LinkedIn seviyesinde konuş.
-
-GOAL
-- Short, accurate, experience-based answers with high technical precision.
+PERSONA:
+${personaText}
 `;
 
 // API endpoint
@@ -83,16 +42,6 @@ app.post("/mg-chat", async (req, res) => {
     if (!userMessage) {
       return res.status(400).json({ error: "message field is required" });
     }
-
-    // 🔹 persona'yı yükle (cache'li mekanizma)
-    const persona = await getPersona();
-    const systemPrompt = `
-You are "Mustafa Gülap AI Assistant".
-Use the following persona description as absolute ground truth for who you are,
-how you speak and how you answer. Never contradict it.
-
-${persona}
-`;
 
     const apiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
@@ -119,24 +68,6 @@ ${persona}
 
     const data = await apiRes.json();
     const reply = data.choices?.[0]?.message?.content ?? "Boş cevap döndü.";
-    res.json({ reply });
-
-  } catch (err) {
-    console.error("Server error:", err);
-    res.status(500).json({ error: "Server error" });
-  }
-});
-
-
-    if (!apiRes.ok) {
-      const errorText = await apiRes.text();
-      console.error("OpenAI API error:", errorText);
-      return res.status(500).json({ error: "OpenAI API error", detail: errorText });
-    }
-
-    const data = await apiRes.json();
-    const reply = data.choices?.[0]?.message?.content ?? "Boş cevap döndü.";
-
     res.json({ reply });
 
   } catch (err) {

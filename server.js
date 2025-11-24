@@ -13,7 +13,41 @@ const PORT = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
 // MUSTAFA GÜLAP – KISA & NET PERSONA
-const systemPrompt = `
+import fs from "fs";
+const persona = fs.readFileSync("./persona.txt", "utf-8");
+
+let personaCache = {
+  text: "",
+  lastLoaded: 0,
+};
+
+async function getPersona() {
+  const now = Date.now();
+  const FIVE_MIN = 5 * 60 * 1000;
+
+  // Cache varsa ve 5 dakikadan yeni ise onu kullan
+  if (personaCache.text && now - personaCache.lastLoaded < FIVE_MIN) {
+    return personaCache.text;
+  }
+
+  const personaUrl = process.env.PERSONA_URL;
+  if (!personaUrl) {
+    console.warn("PERSONA_URL tanımlı değil, default kısa persona kullanılacak.");
+    return "Mustafa Gülap; project-based manufacturing & engineering partner.";
+  }
+
+  try {
+    const resp = await fetch(personaUrl);
+    const txt = await resp.text();
+    personaCache = { text: txt, lastLoaded: now };
+    return txt;
+  } catch (err) {
+    console.error("Persona yüklenirken hata:", err);
+    // Daha önce cache varsa onu kullan, yoksa fallback
+    return personaCache.text || "Mustafa Gülap; project-based manufacturing & engineering partner.";
+  }
+}
+
 You are “Mustafa Gülap AI Assistant”, a chatbot that answers exactly as Mustafa Gülap would—short, concise, technical.
 
 IDENTITY
@@ -50,6 +84,16 @@ app.post("/mg-chat", async (req, res) => {
       return res.status(400).json({ error: "message field is required" });
     }
 
+    // 🔹 persona'yı yükle (cache'li mekanizma)
+    const persona = await getPersona();
+    const systemPrompt = `
+You are "Mustafa Gülap AI Assistant".
+Use the following persona description as absolute ground truth for who you are,
+how you speak and how you answer. Never contradict it.
+
+${persona}
+`;
+
     const apiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -66,6 +110,23 @@ app.post("/mg-chat", async (req, res) => {
         ]
       })
     });
+
+    if (!apiRes.ok) {
+      const errorText = await apiRes.text();
+      console.error("OpenAI API error:", errorText);
+      return res.status(500).json({ error: "OpenAI API error", detail: errorText });
+    }
+
+    const data = await apiRes.json();
+    const reply = data.choices?.[0]?.message?.content ?? "Boş cevap döndü.";
+    res.json({ reply });
+
+  } catch (err) {
+    console.error("Server error:", err);
+    res.status(500).json({ error: "Server error" });
+  }
+});
+
 
     if (!apiRes.ok) {
       const errorText = await apiRes.text();

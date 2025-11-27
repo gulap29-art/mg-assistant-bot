@@ -51,7 +51,7 @@ app.post("/mg-chat", async (req, res) => {
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        max_tokens: 150,
+        max_tokens: 250,
         temperature: 0.4,
         messages: [
           { role: "system", content: systemPrompt },
@@ -67,7 +67,17 @@ app.post("/mg-chat", async (req, res) => {
     }
 
     const data = await apiRes.json();
-    const reply = data.choices?.[0]?.message?.content ?? "Boş cevap döndü.";
+    let reply = "";
+
+// Eğer OpenAI cevabı bir array ise parçaları birleştir
+if (Array.isArray(data.choices?.[0]?.message?.content)) {
+  reply = data.choices[0].message.content
+    .map(part => part.text || part)
+    .join(" ");
+} else {
+  reply = data.choices?.[0]?.message?.content ?? "";
+}
+
     res.json({ reply });
 
   } catch (err) {
@@ -236,6 +246,37 @@ app.get("/ui", (req, res) => {
   `;
   res.send(html);
 });
+
+const apiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+  method: "POST",
+  headers: {
+    "Authorization": `Bearer ${OPENAI_API_KEY}`,
+    "Content-Type": "application/json"
+  },
+  body: JSON.stringify({
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userMessage }
+    ]
+  })
+});
+
+const data = await apiRes.json();
+
+// ---- BURASI YENİ EK ---- //
+let reply = "";
+const content = data.choices?.[0]?.message?.content;
+
+if (Array.isArray(content)) {
+  reply = content.map(x => x.text || x).join(" ");
+} else {
+  reply = content ?? "";
+}
+// ------------------------ //
+
+res.json({ reply });
+
 
 app.get("/", (req, res) => res.redirect("/ui"));
 

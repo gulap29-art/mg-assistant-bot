@@ -13,25 +13,31 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-// PERSONA TXT'DEN YÜKLEME
+// persona.txt'den persona yükle (varsa)
 let personaText = "";
 try {
   personaText = fs.readFileSync("./persona.txt", "utf-8");
-  console.log("Persona yüklendi.");
+  console.log("persona.txt yüklendi.");
 } catch (err) {
-  console.error("persona.txt okunamadı, default persona kullanılacak:", err);
-  personaText = "Mustafa Gülap; proje bazlı imalat ve mühendislik hizmeti veren bir çözüm ortağıdır.";
+  console.warn("persona.txt bulunamadı, default persona kullanılacak.");
+  personaText = `
+Mustafa Gülap, ağır sanayi ve rafineri ekipmanları için proje bazlı imalat
+ve danışmanlık yapan bir makine mühendisidir. Cevaplar her zaman kısa ve nettir.
+  `;
 }
 
+// SYSTEM PROMPT
 const systemPrompt = `
 You are "Mustafa Gülap AI Assistant".
 
-Use the following persona description as ground truth about
-who you are, how you speak and how you answer.
-Never contradict it, and answer always as if you are Mustafa
-("ben" diliyle, kısa, net, teknik, profesyonel).
+- Türkçe yanıt ver.
+- Cevapların kısa ve net olsun: en fazla 3–4 kısa cümle.
+- Gereksiz hikaye anlatma, LinkedIn mesajı kadar odaklı yaz.
+- Teknik sorularda mümkünse somut terimler ve adımlar kullan.
+- Kullanıcıyla "ben" diliyle konuş (Mustafa gibi cevap ver).
 
-PERSONA:
+Aşağıdaki persona bilgisine sadık kal:
+
 ${personaText}
 `;
 
@@ -51,7 +57,7 @@ app.post("/mg-chat", async (req, res) => {
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        max_tokens: 250,
+        max_tokens: 220,      // cevap tam bitsin diye biraz rahat
         temperature: 0.4,
         messages: [
           { role: "system", content: systemPrompt },
@@ -67,19 +73,18 @@ app.post("/mg-chat", async (req, res) => {
     }
 
     const data = await apiRes.json();
+
+    // İçerik tek parça mı çok parça mı gelmiş, ikisini de destekle
+    const content = data.choices?.[0]?.message?.content;
     let reply = "";
 
-// Eğer OpenAI cevabı bir array ise parçaları birleştir
-if (Array.isArray(data.choices?.[0]?.message?.content)) {
-  reply = data.choices[0].message.content
-    .map(part => part.text || part)
-    .join(" ");
-} else {
-  reply = data.choices?.[0]?.message?.content ?? "";
-}
+    if (Array.isArray(content)) {
+      reply = content.map(part => part.text || part).join(" ");
+    } else {
+      reply = content ?? "Boş cevap döndü.";
+    }
 
     res.json({ reply });
-
   } catch (err) {
     console.error("Server error:", err);
     res.status(500).json({ error: "Server error" });
@@ -98,7 +103,7 @@ app.get("/ui", (req, res) => {
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
       body {
-        font-family: system-ui, sans-serif;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
         background: #ece5dd;
         display: flex;
         align-items: center;
@@ -122,15 +127,25 @@ app.get("/ui", (req, res) => {
         color: #fff;
         padding: 12px 16px;
       }
-      .chat-header-title { font-size: 16px; font-weight: 600; }
-      .chat-header-sub { font-size: 12px; opacity: 0.85; margin-top: 2px; }
+      .chat-header-title {
+        font-size: 16px;
+        font-weight: 600;
+      }
+      .chat-header-sub {
+        font-size: 12px;
+        opacity: 0.85;
+        margin-top: 2px;
+      }
       .chat-messages {
         flex: 1;
         background: #ece5dd;
         padding: 10px 8px;
         overflow-y: auto;
       }
-      .bubble-row { display: flex; margin-bottom: 8px; }
+      .bubble-row {
+        display: flex;
+        margin-bottom: 8px;
+      }
       .bubble {
         max-width: 80%;
         padding: 8px 10px;
@@ -139,10 +154,19 @@ app.get("/ui", (req, res) => {
         line-height: 1.4;
         position: relative;
       }
-      .bubble-user { margin-left: auto; background: #dcf8c6; }
-      .bubble-bot { margin-right: auto; background: #ffffff; }
+      .bubble-user {
+        margin-left: auto;
+        background: #dcf8c6;
+      }
+      .bubble-bot {
+        margin-right: auto;
+        background: #ffffff;
+      }
       .bubble-meta {
-        font-size: 10px; opacity: 0.6; margin-top: 3px; text-align: right;
+        font-size: 10px;
+        opacity: 0.6;
+        margin-top: 3px;
+        text-align: right;
       }
       .chat-input-area {
         padding: 8px;
@@ -152,13 +176,25 @@ app.get("/ui", (req, res) => {
         align-items: center;
       }
       .chat-input {
-        flex: 1; border-radius: 20px; border: none;
-        padding: 8px 12px; font-size: 13px; outline: none;
+        flex: 1;
+        border-radius: 20px;
+        border: none;
+        padding: 8px 12px;
+        font-size: 13px;
+        outline: none;
       }
       .chat-send-btn {
-        border-radius: 20px; border: none;
-        background: #25d366; color: #ffffff;
-        padding: 8px 14px; font-size: 13px; cursor: pointer;
+        border-radius: 20px;
+        border: none;
+        background: #25d366;
+        color: #ffffff;
+        padding: 8px 14px;
+        font-size: 13px;
+        cursor: pointer;
+      }
+      .chat-send-btn:disabled {
+        opacity: 0.6;
+        cursor: default;
       }
     </style>
   </head>
@@ -168,9 +204,7 @@ app.get("/ui", (req, res) => {
         <div class="chat-header-title">Mustafa Gülap AI Assistant</div>
         <div class="chat-header-sub">Kısa, net ve profesyonel yanıtlar.</div>
       </div>
-
       <div id="messages" class="chat-messages"></div>
-
       <div class="chat-input-area">
         <input id="userInput" class="chat-input" type="text" placeholder="Mesajınızı yazın..." />
         <button id="sendBtn" class="chat-send-btn">Gönder</button>
@@ -210,10 +244,11 @@ app.get("/ui", (req, res) => {
 
         appendMessage(text, "user");
         inputEl.value = "";
+        inputEl.focus();
         sendBtn.disabled = true;
 
         appendMessage("Yazıyorum...", "bot");
-        const loader = messagesEl.lastChild;
+        const loadingRow = messagesEl.lastChild;
 
         try {
           const res = await fetch("/mg-chat", {
@@ -223,21 +258,24 @@ app.get("/ui", (req, res) => {
           });
 
           const data = await res.json();
-          messagesEl.removeChild(loader);
-          appendMessage(data.reply, "bot");
+          messagesEl.removeChild(loadingRow);
+          appendMessage(data.reply || "Boş yanıt döndü.", "bot");
         } catch (err) {
-          messagesEl.removeChild(loader);
-          appendMessage("Bağlantı hatası.", "bot");
+          console.error(err);
+          messagesEl.removeChild(loadingRow);
+          appendMessage("Bağlantı hatası, lütfen tekrar deneyin.", "bot");
+        } finally {
+          sendBtn.disabled = false;
         }
-
-        sendBtn.disabled = false;
       }
 
       sendBtn.addEventListener("click", sendMessage);
-      inputEl.addEventListener("keydown", e => { if (e.key === "Enter") sendMessage(); });
+      inputEl.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") sendMessage();
+      });
 
       appendMessage(
-        "Merhaba, ben Mustafa Gülap'ın profesyonel AI asistanıyım. Kısa ve net yanıtlar veriyorum.",
+        "Merhaba, ben Mustafa Gülap'ın profesyonel AI asistanıyım. Kısa ve net cevaplar veriyorum.",
         "bot"
       );
     </script>
@@ -247,38 +285,9 @@ app.get("/ui", (req, res) => {
   res.send(html);
 });
 
-const apiRes = await fetch("https://api.openai.com/v1/chat/completions", {
-  method: "POST",
-  headers: {
-    "Authorization": `Bearer ${OPENAI_API_KEY}`,
-    "Content-Type": "application/json"
-  },
-  body: JSON.stringify({
-    model: "gpt-4o-mini",
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userMessage }
-    ]
-  })
+app.get("/", (req, res) => {
+  res.redirect("/ui");
 });
-
-const data = await apiRes.json();
-
-// ---- BURASI YENİ EK ---- //
-let reply = "";
-const content = data.choices?.[0]?.message?.content;
-
-if (Array.isArray(content)) {
-  reply = content.map(x => x.text || x).join(" ");
-} else {
-  reply = content ?? "";
-}
-// ------------------------ //
-
-res.json({ reply });
-
-
-app.get("/", (req, res) => res.redirect("/ui"));
 
 app.listen(PORT, () => {
   console.log(`MG Assistant API listening on port ${PORT}`);

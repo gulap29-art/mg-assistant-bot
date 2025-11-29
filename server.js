@@ -35,12 +35,16 @@ You are "Mustafa Gülap AI Assistant".
 
 Use the following persona description as ground truth about
 who you are, how you speak and how you answer.
-Answer as if you are Mustafa ("ben" diliyle), kısa, net, teknik, profesyonel
-ve en fazla 3-4 cümle yaz.
-- Persona’da bulunmayan konularda asla tahmin yürütme veya bilgi uydurma.
-- Bu tür sorular geldiğinde şu şablonla cevap ver:
-  “Bu konuda elimde veri yok; o yüzden net bir şey söyleyemem. İsterseniz detaylı bilgi için mustafagulap@gmail.com adresine ulaşabilirsiniz.”
+Answer as if you are Mustafa ("ben" diliyle), short, concise, technical and professional.
+Keep answers at most 3–4 sentences.
 
+VERY IMPORTANT:
+- NEVER invent or guess any new personal or biographical information that is not explicitly written in the persona text.
+- This includes (but is not limited to): high school, place of birth, detailed family background, marital status, number of children, home address, salary, phone number or any private life details.
+- If the user asks about any information that is NOT clearly present in the persona, you MUST answer exactly in this style (in Turkish):
+  "Bu konuda elimde veri yok; o yüzden net bir şey söyleyemem. İsterseniz detaylı bilgi için mustafagulap@gmail.com adresine ulaşabilirsiniz."
+- Do not add extra sentences, stories or assumptions in such cases.
+- You may share only the email address defined in the persona (mustafagulap@gmail.com) as a contact channel. Do NOT invent any phone numbers or additional contact info.
 
 PERSONA:
 ${personaText}
@@ -68,7 +72,7 @@ app.post("/mg-chat", async (req, res) => {
       body: JSON.stringify({
         model: "gpt-4o-mini",
         max_tokens: 220,
-        temperature: 0.4,
+        temperature: 0.2,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userMessage },
@@ -108,7 +112,6 @@ app.post("/mg-chat", async (req, res) => {
 // PERSONA OTOMATİK GÜNCELLEME ENDPOINTİ
 // ------------------------
 app.post("/persona-auto-update", (req, res) => {
-  // İstersen token ile koru: ADMIN_TOKEN env değişkeni tanımlıysa kontrol et
   const token = process.env.ADMIN_TOKEN;
   if (token && req.query.token !== token) {
     return res.status(403).json({ error: "unauthorized" });
@@ -119,10 +122,8 @@ app.post("/persona-auto-update", (req, res) => {
     return res.status(400).json({ error: "text alanı zorunlu" });
   }
 
-  // Bellekteki personayı güncelle
   personaText = newText;
 
-  // Dosyaya yaz (kalıcı olması için)
   try {
     fs.writeFileSync("./persona.txt", newText, "utf-8");
     console.log("Persona persona.txt dosyasına kaydedildi.");
@@ -214,8 +215,8 @@ app.get("/ui", (req, res) => {
   <body>
     <div class="chat-wrapper">
       <div class="chat-header">
-        <div class="chat-header-title">Mustafa Gülap AI Assistant</div>
-        <div class="chat-header-sub">Kısa, net ve profesyonel yanıtlar.</div>
+        <div class="chat-header-title">Mustafa Gülap Yapay Asistanı</div>
+        <div class="chat-header-sub">Hakkımdaki bilgilerim için asistanımdan destek alabilirsiniz!.</div>
       </div>
 
       <div id="messages" class="chat-messages"></div>
@@ -303,3 +304,4 @@ app.get("/", (req, res) => res.redirect("/ui"));
 app.listen(PORT, () => {
   console.log(`MG Assistant API listening on port ${PORT}`);
 });
+

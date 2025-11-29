@@ -9,39 +9,43 @@ dotenv.config();
 const app = express();
 app.use(cors());
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 const PORT = process.env.PORT || 3000;
 const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-// persona.txt'den persona yükle (varsa)
+// ------------------------
+// PERSONA YÖNETİMİ
+// ------------------------
 let personaText = "";
+
 try {
   personaText = fs.readFileSync("./persona.txt", "utf-8");
-  console.log("persona.txt yüklendi.");
+  console.log("Persona yüklendi.");
 } catch (err) {
-  console.warn("persona.txt bulunamadı, default persona kullanılacak.");
-  personaText = `
-Mustafa Gülap, ağır sanayi ve rafineri ekipmanları için proje bazlı imalat
-ve danışmanlık yapan bir makine mühendisidir. Cevaplar her zaman kısa ve nettir.
-  `;
+  console.error("persona.txt okunamadı, default persona kullanılacak:", err);
+  personaText =
+    "Mustafa Gülap; proje bazlı imalat ve mühendislik hizmeti veren, kısa ve net konuşan bir çözüm ortağıdır.";
 }
 
-// SYSTEM PROMPT
-const systemPrompt = `
+// Her istekte güncel persona'dan system prompt üret
+function buildSystemPrompt() {
+  return `
 You are "Mustafa Gülap AI Assistant".
 
-- Türkçe yanıt ver.
-- Cevapların kısa ve net olsun: en fazla 3–4 kısa cümle.
-- Gereksiz hikaye anlatma, LinkedIn mesajı kadar odaklı yaz.
-- Teknik sorularda mümkünse somut terimler ve adımlar kullan.
-- Kullanıcıyla "ben" diliyle konuş (Mustafa gibi cevap ver).
+Use the following persona description as ground truth about
+who you are, how you speak and how you answer.
+Answer as if you are Mustafa ("ben" diliyle), kısa, net, teknik, profesyonel
+ve en fazla 3-4 cümle yaz.
 
-Aşağıdaki persona bilgisine sadık kal:
-
+PERSONA:
 ${personaText}
 `;
+}
 
-// API endpoint
+// ------------------------
+// CHAT ENDPOINT
+// ------------------------
 app.post("/mg-chat", async (req, res) => {
   try {
     const userMessage = req.body?.message;
@@ -49,21 +53,23 @@ app.post("/mg-chat", async (req, res) => {
       return res.status(400).json({ error: "message field is required" });
     }
 
+    const systemPrompt = buildSystemPrompt();
+
     const apiRes = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
+        Authorization: `Bearer ${OPENAI_API_KEY}`,
+        "Content-Type": "application/json",
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        max_tokens: 220,      // cevap tam bitsin diye biraz rahat
+        max_tokens: 220,
         temperature: 0.4,
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: userMessage }
-        ]
-      })
+          { role: "user", content: userMessage },
+        ],
+      }),
     });
 
     if (!apiRes.ok) {
@@ -73,13 +79,16 @@ app.post("/mg-chat", async (req, res) => {
     }
 
     const data = await apiRes.json();
-
-    // İçerik tek parça mı çok parça mı gelmiş, ikisini de destekle
     const content = data.choices?.[0]?.message?.content;
-    let reply = "";
 
+    // Multi-part content gelirse hepsini birleştir
+    let reply = "";
     if (Array.isArray(content)) {
-      reply = content.map(part => part.text || part).join(" ");
+      reply = content
+        .map((part) =>
+          typeof part === "string" ? part : (part.text ?? "")
+        )
+        .join(" ");
     } else {
       reply = content ?? "Boş cevap döndü.";
     }
@@ -91,7 +100,38 @@ app.post("/mg-chat", async (req, res) => {
   }
 });
 
-// WhatsApp tarzı UI
+// ------------------------
+// PERSONA OTOMATİK GÜNCELLEME ENDPOINTİ
+// ------------------------
+app.post("/persona-auto-update", (req, res) => {
+  // İstersen token ile koru: ADMIN_TOKEN env değişkeni tanımlıysa kontrol et
+  const token = process.env.ADMIN_TOKEN;
+  if (token && req.query.token !== token) {
+    return res.status(403).json({ error: "unauthorized" });
+  }
+
+  const newText = req.body?.text;
+  if (!newText) {
+    return res.status(400).json({ error: "text alanı zorunlu" });
+  }
+
+  // Bellekteki personayı güncelle
+  personaText = newText;
+
+  // Dosyaya yaz (kalıcı olması için)
+  try {
+    fs.writeFileSync("./persona.txt", newText, "utf-8");
+    console.log("Persona persona.txt dosyasına kaydedildi.");
+  } catch (err) {
+    console.error("Persona dosyaya yazılamadı:", err);
+  }
+
+  return res.json({ ok: true });
+});
+
+// ------------------------
+// WHATSAPP TARZI UI
+// ------------------------
 app.get("/ui", (req, res) => {
   const html = `
   <!DOCTYPE html>
@@ -103,7 +143,7 @@ app.get("/ui", (req, res) => {
     <style>
       * { box-sizing: border-box; margin: 0; padding: 0; }
       body {
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Inter", sans-serif;
+        font-family: system-ui, sans-serif;
         background: #ece5dd;
         display: flex;
         align-items: center;
@@ -127,25 +167,15 @@ app.get("/ui", (req, res) => {
         color: #fff;
         padding: 12px 16px;
       }
-      .chat-header-title {
-        font-size: 16px;
-        font-weight: 600;
-      }
-      .chat-header-sub {
-        font-size: 12px;
-        opacity: 0.85;
-        margin-top: 2px;
-      }
+      .chat-header-title { font-size: 16px; font-weight: 600; }
+      .chat-header-sub { font-size: 12px; opacity: 0.85; margin-top: 2px; }
       .chat-messages {
         flex: 1;
         background: #ece5dd;
         padding: 10px 8px;
         overflow-y: auto;
       }
-      .bubble-row {
-        display: flex;
-        margin-bottom: 8px;
-      }
+      .bubble-row { display: flex; margin-bottom: 8px; }
       .bubble {
         max-width: 80%;
         padding: 8px 10px;
@@ -154,19 +184,10 @@ app.get("/ui", (req, res) => {
         line-height: 1.4;
         position: relative;
       }
-      .bubble-user {
-        margin-left: auto;
-        background: #dcf8c6;
-      }
-      .bubble-bot {
-        margin-right: auto;
-        background: #ffffff;
-      }
+      .bubble-user { margin-left: auto; background: #dcf8c6; }
+      .bubble-bot { margin-right: auto; background: #ffffff; }
       .bubble-meta {
-        font-size: 10px;
-        opacity: 0.6;
-        margin-top: 3px;
-        text-align: right;
+        font-size: 10px; opacity: 0.6; margin-top: 3px; text-align: right;
       }
       .chat-input-area {
         padding: 8px;
@@ -176,25 +197,13 @@ app.get("/ui", (req, res) => {
         align-items: center;
       }
       .chat-input {
-        flex: 1;
-        border-radius: 20px;
-        border: none;
-        padding: 8px 12px;
-        font-size: 13px;
-        outline: none;
+        flex: 1; border-radius: 20px; border: none;
+        padding: 8px 12px; font-size: 13px; outline: none;
       }
       .chat-send-btn {
-        border-radius: 20px;
-        border: none;
-        background: #25d366;
-        color: #ffffff;
-        padding: 8px 14px;
-        font-size: 13px;
-        cursor: pointer;
-      }
-      .chat-send-btn:disabled {
-        opacity: 0.6;
-        cursor: default;
+        border-radius: 20px; border: none;
+        background: #25d366; color: #ffffff;
+        padding: 8px 14px; font-size: 13px; cursor: pointer;
       }
     </style>
   </head>
@@ -204,7 +213,9 @@ app.get("/ui", (req, res) => {
         <div class="chat-header-title">Mustafa Gülap AI Assistant</div>
         <div class="chat-header-sub">Kısa, net ve profesyonel yanıtlar.</div>
       </div>
+
       <div id="messages" class="chat-messages"></div>
+
       <div class="chat-input-area">
         <input id="userInput" class="chat-input" type="text" placeholder="Mesajınızı yazın..." />
         <button id="sendBtn" class="chat-send-btn">Gönder</button>
@@ -244,11 +255,10 @@ app.get("/ui", (req, res) => {
 
         appendMessage(text, "user");
         inputEl.value = "";
-        inputEl.focus();
         sendBtn.disabled = true;
 
         appendMessage("Yazıyorum...", "bot");
-        const loadingRow = messagesEl.lastChild;
+        const loader = messagesEl.lastChild;
 
         try {
           const res = await fetch("/mg-chat", {
@@ -258,24 +268,22 @@ app.get("/ui", (req, res) => {
           });
 
           const data = await res.json();
-          messagesEl.removeChild(loadingRow);
-          appendMessage(data.reply || "Boş yanıt döndü.", "bot");
+          messagesEl.removeChild(loader);
+          appendMessage(data.reply, "bot");
         } catch (err) {
           console.error(err);
-          messagesEl.removeChild(loadingRow);
-          appendMessage("Bağlantı hatası, lütfen tekrar deneyin.", "bot");
-        } finally {
-          sendBtn.disabled = false;
+          messagesEl.removeChild(loader);
+          appendMessage("Bağlantı hatası.", "bot");
         }
+
+        sendBtn.disabled = false;
       }
 
       sendBtn.addEventListener("click", sendMessage);
-      inputEl.addEventListener("keydown", (e) => {
-        if (e.key === "Enter") sendMessage();
-      });
+      inputEl.addEventListener("keydown", e => { if (e.key === "Enter") sendMessage(); });
 
       appendMessage(
-        "Merhaba, ben Mustafa Gülap'ın profesyonel AI asistanıyım. Kısa ve net cevaplar veriyorum.",
+        "Merhaba, ben Mustafa Gülap'ın profesyonel AI asistanıyım. Kısa ve net yanıtlar veriyorum.",
         "bot"
       );
     </script>
@@ -285,9 +293,8 @@ app.get("/ui", (req, res) => {
   res.send(html);
 });
 
-app.get("/", (req, res) => {
-  res.redirect("/ui");
-});
+// Root
+app.get("/", (req, res) => res.redirect("/ui"));
 
 app.listen(PORT, () => {
   console.log(`MG Assistant API listening on port ${PORT}`);
